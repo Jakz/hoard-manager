@@ -10,4 +10,6 @@ public interface Format
       @Override public String name() { return name; }
     };
   }
+  
+  public static final String[] jpegExtensions = { "jpg", "jpeg" };
 }
