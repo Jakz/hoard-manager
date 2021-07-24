@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,7 +35,12 @@ import com.github.jakz.hm.data.comics.ComicIssue;
 import com.github.jakz.hm.data.comics.IssueDate;
 import com.github.jakz.hm.formats.Format;
 import com.github.jakz.hm.formats.FormatGuesser;
+import com.itextpdf.text.BadElementException;
+import com.itextpdf.text.Document;
 import com.itextpdf.text.DocumentException;
+import com.itextpdf.text.PageSize;
+import com.itextpdf.text.Paragraph;
+import com.itextpdf.text.Rectangle;
 import com.itextpdf.text.pdf.PdfContentByte;
 import com.itextpdf.text.pdf.PdfDocument;
 import com.itextpdf.text.pdf.PdfImage;
@@ -42,6 +48,8 @@ import com.itextpdf.text.pdf.PdfPage;
 import com.itextpdf.text.pdf.PdfStamper;
 import com.itextpdf.text.pdf.PdfWriter;
 import com.pixbits.lib.functional.StreamException;
+import com.pixbits.lib.io.archive.support.Archive;
+import com.pixbits.lib.io.archive.support.Archive.Item;
 import com.pixbits.lib.ui.UIUtils;
 import com.pixbits.lib.ui.table.ColumnSpec;
 import com.pixbits.lib.ui.table.DataSource;
@@ -49,6 +57,9 @@ import com.pixbits.lib.ui.table.FilterableDataSource;
 import com.pixbits.lib.ui.table.TableModel;
 import com.pixbits.lib.ui.table.renderers.LambdaLabelTableRenderer;
 import com.pixbits.lib.util.IconCache;
+
+import net.lingala.zip4j.ZipFile;
+import net.lingala.zip4j.model.FileHeader;
 
 public class App
 {
@@ -162,29 +173,66 @@ public class App
     }));
   }
   
-  public static void testPDF() throws DocumentException, IOException
+  public static void convertCBZtoPDF(Path from, Path to) throws IOException, DocumentException
   {
-    Path path = Paths.get("output.pdf");
-    PdfDocument doc = new PdfDocument();
-    PdfWriter writer = PdfWriter.getInstance(doc, Files.newOutputStream(path));
+    ZipFile file = new ZipFile(from.toFile());
+    List<FileHeader> entries = file.getFileHeaders();
     
-    com.itextpdf.text.Image image = com.itextpdf.text.Image.getInstance("test.jpg");
-    PdfImage pdfImage = new PdfImage(image, "", null);
+    Document doc = null;
+    PdfWriter writer = null;
+    PdfContentByte canvas = null;
     
-    doc.open();
+    Rectangle size = null;
+
+    int counter = 1;
     
-    PdfContentByte canvas = writer.getDirectContent();
-    canvas.addImage(image);
+    for (FileHeader entry : entries)
+    {
+      System.out.println(entry.getFileName());
+      if (entry.isDirectory())
+        continue;
+      
+      Path dest = Paths.get("temp");
+      String destPath = dest.toAbsolutePath().resolve(entry.getFileName()).toString();
+            
+      file.extractFile(entry, dest.toString());
+      
+      if (destPath.endsWith(".jpg"))
+      {
+        com.itextpdf.text.Image image = com.itextpdf.text.Image.getInstance(destPath);
+
+        if (doc == null)
+          size = new Rectangle(image.getWidth(), image.getHeight());
+
+        image.scaleToFit(size);
+        image.setAbsolutePosition(0.0f, 0.0f);
         
+        if (doc == null)
+        {     
+          System.out.printf("Creating output PDF of size %dx%d\n", (int)image.getWidth(), (int)image.getHeight());
+          doc = new Document(size);          
+          writer = PdfWriter.getInstance(doc, Files.newOutputStream(to, StandardOpenOption.CREATE));
+          doc.open();
+
+          canvas = writer.getDirectContent();
+
+        }
+        
+        doc.newPage();
+        canvas.addImage(image);
+      }
+    }
+ 
     doc.close();
-    
+    file.close();
   }
+
 
   public static void main(String[] args)
   {
     try
     {
-      testPDF();
+      convertCBZtoPDF(Paths.get("F:\\Ebooks\\Comics\\Disney\\Topolino\\Topolino 3345- (Anno 2020)\\Topolino 3384 (Disney c2c By Roy).cbz"), Paths.get("output.pdf"));
       if (true)
         return;
       
